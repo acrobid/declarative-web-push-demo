@@ -1,0 +1,10 @@
+{
+  "name": "Declarative Web Push Demo",
+  "short_name": "Decl. Push",
+  "description": "Reproducing Apple's broken Declarative Web Push on iOS.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

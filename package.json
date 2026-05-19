@@ -1,0 +1,36 @@
+{
+  "name": "declarative-web-push-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,api -c blue,magenta \"vp dev\" \"tsx watch server/index.ts\"",
+    "build": "vue-tsc --noEmit && vp build && tsc -p tsconfig.server.json",
+    "start": "node dist-server/index.js",
+    "preview": "vp preview",
+    "check": "vp check",
+    "test": "vp test",
+    "prepare": "vp config"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.3",
+    "better-sqlite3": "^12.10.0",
+    "dotenv": "^17.4.2",
+    "hono": "^4.12.19",
+    "vue": "^3.5.34",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.9.0",
+    "@types/web-push": "^3.6.4",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.22.2",
+    "typescript": "~6.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vue-tsc": "^3.3.0"
+  },
+  "packageManager": "pnpm@9.9.0"
+}
