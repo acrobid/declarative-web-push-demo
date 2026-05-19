@@ -25,7 +25,6 @@ export interface DebugInfo {
     endpoint_host: string;
     user_agent: string | null;
     created_at: number;
-    type: string;
   }>;
   recent_sends: Array<{
     id: number;
@@ -42,7 +41,7 @@ export interface DebugInfo {
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers: { "content-type": "application/json", ...(init?.headers as Record<string, string>) },
   });
   if (!res.ok) throw new Error(`${url} → ${res.status}`);
   return res.json() as Promise<T>;
@@ -50,10 +49,10 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   vapidPublicKey: () => jsonFetch<{ key: string }>("/api/vapid-public-key"),
-  subscribe: (subscription: PushSubscriptionJSON, userAgent: string, type?: "declarative" | "sw") =>
+  subscribe: (subscription: PushSubscriptionJSON, userAgent: string) =>
     jsonFetch<SubscribeResponse>("/api/subscribe", {
       method: "POST",
-      body: JSON.stringify({ subscription, user_agent: userAgent, type }),
+      body: JSON.stringify({ subscription, user_agent: userAgent }),
     }),
   send: (subscriber_id: string, delay_seconds = 0) =>
     jsonFetch<{ ok: true; pending_id?: number; send_id?: number }>("/api/send", {

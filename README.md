@@ -1,6 +1,10 @@
 # Declarative Web Push Demo
 
-A live reproduction of Apple's [Declarative Web Push](https://webkit.org/blog/16535/meet-declarative-web-push/) — a new iOS push mechanism that the push service accepts (HTTP 201) but iOS does not appear to deliver to the device.
+**Declarative Web Push works on Safari today. Firebase Cloud Messaging blocks it.**
+
+Apple shipped Declarative Web Push in Safari 18.5 — push notifications without a service worker, with better battery life and privacy. It works directly in Safari. But [Firebase Cloud Messaging strips the `web_push` field](https://github.com/firebase/firebase-admin-node/issues/2892) from push payloads, making declarative push impossible for Firebase users even on Safari where it's fully supported.
+
+The fix is a single optional field passthrough. Google acknowledged the issue in 2025 but has taken no action.
 
 **Live demo:** https://declarative-push.iamjoshcarter.com
 
@@ -8,25 +12,25 @@ A live reproduction of Apple's [Declarative Web Push](https://webkit.org/blog/16
 
 ## What is Declarative Web Push?
 
-Apple introduced Declarative Web Push in Safari 18.4/iOS 18.4 as a replacement for the service-worker-based push model. The key difference: no service worker is required. Instead, the server sends a JSON payload with `"web_push": 8030` and a `notification` object; the OS is supposed to parse the payload and display the notification natively.
+Apple introduced Declarative Web Push as a replacement for the service-worker-based push model. The key difference: no service worker is required. Instead, the server sends a JSON payload with `"web_push": 8030` and a `notification` object. The OS parses the payload and displays the notification natively.
 
-This is a meaningful improvement in theory — fewer moving parts, better battery life, more privacy. The [WebKit blog post](https://webkit.org/blog/16535/meet-declarative-web-push/) describes it as a complete, working feature.
+This is a meaningful improvement — fewer moving parts, better battery life, more privacy. The [WebKit blog post](https://webkit.org/blog/16535/meet-declarative-web-push/) describes it as a complete, working feature. And it is — on Safari.
 
 ## What this demo shows
 
-This PWA lets you subscribe to push notifications and trigger sends in several ways:
+This PWA lets you subscribe to declarative push notifications on Safari and trigger sends in several ways:
 
 - **Send now** — immediate push
 - **Send in 15s / 60s** — delayed send (lock your phone, then check)
-- **Trigger URL** — hit a URL from any other device to push to your phone
+- **Trigger URL** — hit a URL from any other device to push to your browser
 
-The Diagnostics panel records every send with its HTTP status from Apple's push service. In testing: the push service returns **HTTP 201** (accepted) for every send, but **no notification appears on the device** — no banner, no badge, locked or unlocked, foreground or background.
+The Diagnostics panel records every send with its HTTP status from Apple's push service. Sends return **HTTP 201** (accepted) and the notification appears on the device.
 
-The same payload sent to Firefox or Chrome on desktop works correctly.
+If you're on Chrome or Firefox, `window.pushManager` doesn't exist — those browsers still require the old service-worker model. And if you use Firebase to send push, the `web_push` field is stripped regardless of browser.
 
 ## Stack
 
-- **Frontend:** Vue 3 SPA, no service worker (Declarative Web Push subscribes via `window.pushManager`)
+- **Frontend:** Vue 3 SPA, no service worker (subscribes via `window.pushManager`)
 - **Backend:** Hono on Node.js, serving the SPA and a JSON API
 - **Storage:** SQLite (better-sqlite3) — subscriptions, send log, pending queue
 - **Push:** web-push npm package, VAPID-signed, aes128gcm
@@ -46,8 +50,6 @@ Push requires HTTPS. To test on a real device locally, use a tunnel:
 ngrok http 5173   # or: tailscale funnel 5173
 ```
 
-Point Safari at the tunnel URL, install to Home Screen, then test.
-
 ## Build and run
 
 ```bash
@@ -59,11 +61,10 @@ pnpm start   # serves both from a single Node process on port 8787
 
 Single Dockerfile, deployed via Coolify on Hetzner. See `IMPLEMENTATION.md §12` for the step-by-step.
 
-## Contributing / reproducing
+## The Firebase gap
 
-If you can reproduce or disprove this behavior on your own iOS device, open an issue with:
+Firebase Cloud Messaging's admin SDK currently strips the `web_push` field from push payloads. This means even if you're targeting Safari, where declarative push works, Firebase prevents you from using it.
 
-- iOS version and Safari version
-- Whether the PWA was installed to Home Screen
-- The HTTP status shown in the Diagnostics panel
-- Whether any notification appeared
+The fix is a single-field passthrough. It's been [reported since 2025](https://github.com/firebase/firebase-admin-node/issues/2892) with no action from Google.
+
+Star and comment on the issue to signal demand.

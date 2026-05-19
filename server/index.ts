@@ -5,7 +5,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { db, type SubscriptionRow } from "./db.js";
-import { sendDeclarative, sendSW, vapidPublicKey } from "./push.js";
+import { sendPush, vapidPublicKey } from "./push.js";
 
 const app = new Hono();
 const PORT = Number(process.env.PORT ?? 8787);
@@ -49,16 +49,14 @@ app.post("/api/subscribe", async (c) => {
   const body = await c.req.json<{
     subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
     user_agent?: string;
-    type?: string;
   }>();
   const { endpoint, keys } = body.subscription;
   if (!endpoint || !keys?.p256dh || !keys?.auth) {
     return c.json({ error: "bad subscription" }, 400);
   }
-  const subType = body.type === "sw" ? "sw" : "declarative";
-  const existing = db
-    .prepare("SELECT * FROM subscriptions WHERE endpoint = ? AND type = ?")
-    .get(endpoint, subType) as SubscriptionRow | undefined;
+  const existing = db.prepare("SELECT * FROM subscriptions WHERE endpoint = ?").get(endpoint) as
+    | SubscriptionRow
+    | undefined;
   if (existing) {
     return c.json({ subscriber_id: existing.id, trigger_token: existing.trigger_token });
   }
@@ -78,18 +76,9 @@ app.post("/api/subscribe", async (c) => {
   const id = randomUUID();
   const trigger_token = randomBytes(16).toString("hex");
   db.prepare(
-    `INSERT INTO subscriptions (id, endpoint, p256dh, auth, trigger_token, user_agent, created_at, type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    endpoint,
-    keys.p256dh,
-    keys.auth,
-    trigger_token,
-    body.user_agent ?? null,
-    Date.now(),
-    subType,
-  );
+    `INSERT INTO subscriptions (id, endpoint, p256dh, auth, trigger_token, user_agent, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, endpoint, keys.p256dh, keys.auth, trigger_token, body.user_agent ?? null, Date.now());
   return c.json({ subscriber_id: id, trigger_token });
 });
 
@@ -124,14 +113,13 @@ app.get("/api/debug", (c) => {
   const subscriptions = (
     db
       .prepare(
-        `SELECT id, endpoint, user_agent, created_at, type FROM subscriptions ORDER BY created_at DESC`,
+        `SELECT id, endpoint, user_agent, created_at FROM subscriptions ORDER BY created_at DESC`,
       )
       .all() as Array<{
       id: string;
       endpoint: string;
       user_agent: string | null;
       created_at: number;
-      type: string;
     }>
   ).map((r) => ({
     id: r.id,
@@ -144,7 +132,6 @@ app.get("/api/debug", (c) => {
     })(),
     user_agent: r.user_agent,
     created_at: r.created_at,
-    type: r.type,
   }));
 
   const recent_sends = db
@@ -226,8 +213,7 @@ function recordRequest(subscription_id: string, requested_at: number): number {
 }
 
 async function dispatch(sub: SubscriptionRow, send_id: number) {
-  const sender = sub.type === "sw" ? sendSW : sendDeclarative;
-  const result = await sender({
+  const result = await sendPush({
     endpoint: sub.endpoint,
     p256dh: sub.p256dh,
     auth: sub.auth,

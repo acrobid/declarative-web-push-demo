@@ -14,17 +14,19 @@ unless the section calls out variation.
 ## 0. Context
 
 We are building a Progressive Web App that demonstrates Apple's **Declarative
-Web Push** (announced 2025 on the WebKit blog) does not actually deliver
-notifications on iOS Safari, despite Safari accepting the subscription and
-the push service returning HTTP 201 for every send.
+Web Push** (announced 2025 on the WebKit blog) works on Safari 18.5+ today
+— while **Firebase Cloud Messaging strips the `web_push` field**, making it
+impossible for Firebase users to adopt declarative push even on Safari where
+it's fully supported.
 
-Anyone visiting the deployed site on an iPhone should be able to:
+The fix is a single optional field passthrough ([firebase-admin-node#2892](https://github.com/firebase/firebase-admin-node/issues/2892)).
 
-1. Install the PWA to their home screen.
-2. Subscribe to push (no service worker — declarative push doesn't need one).
+Anyone visiting the deployed site should be able to:
+
+1. Visit from Safari 18.5+ (iPhone or Mac).
+2. Subscribe to push via `window.pushManager` (no service worker needed).
 3. Trigger sends in multiple ways (immediate, delayed, external URL).
-4. See server-side delivery receipts proving the push service accepted the
-   payload, while the device displays nothing.
+4. See delivery receipts proving the push service accepts and delivers.
 
 The deployed URL will be `https://declarative-push.iamjoshcarter.com`.
 Deployment is via Coolify on a Hetzner VPS. Email for VAPID `mailto:` subject

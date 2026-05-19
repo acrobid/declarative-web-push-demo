@@ -1,114 +1,55 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import WhatApplePromises from "./components/WhatApplePromises.vue";
-import WhatActuallyHappens from "./components/WhatActuallyHappens.vue";
+import { ref } from "vue";
+import WhyDeclarativePush from "./components/WhyDeclarativePush.vue";
+import FirebaseBlocksIt from "./components/FirebaseBlocksIt.vue";
 import InstallInstructions from "./components/InstallInstructions.vue";
 import Subscribe from "./components/Subscribe.vue";
 import TestControls from "./components/TestControls.vue";
 import Diagnostics from "./components/Diagnostics.vue";
 import type { SubscribeResult } from "./lib/push";
 
-const declarativeSub = ref<SubscribeResult | null>(null);
-const swSub = ref<SubscribeResult | null>(null);
+const sub = ref<SubscribeResult | null>(null);
 const diag = ref<InstanceType<typeof Diagnostics> | null>(null);
 
-function onDeclarativeSubscribed(r: SubscribeResult) {
-  declarativeSub.value = r;
-  localStorage.setItem("dwp:declarative-sub", JSON.stringify(r));
+function onSubscribed(r: SubscribeResult) {
+  sub.value = r;
+  localStorage.setItem("dwp:sub", JSON.stringify(r));
 }
 
-function onSWSubscribed(r: SubscribeResult) {
-  swSub.value = r;
-  localStorage.setItem("dwp:sw-sub", JSON.stringify(r));
-}
-
-try {
-  const d = localStorage.getItem("dwp:declarative-sub");
-  if (d) declarativeSub.value = JSON.parse(d) as SubscribeResult;
-} catch {
-  /* ignore */
-}
-try {
-  const s = localStorage.getItem("dwp:sw-sub");
-  if (s) swSub.value = JSON.parse(s) as SubscribeResult;
-} catch {
-  /* ignore */
-}
-
-// Keep backward compat with the old single-sub key (declarative).
-if (!declarativeSub.value) {
+const cached = localStorage.getItem("dwp:sub");
+if (cached) {
   try {
-    const old = localStorage.getItem("dwp:sub");
-    if (old) {
-      declarativeSub.value = JSON.parse(old) as SubscribeResult;
-      localStorage.setItem("dwp:declarative-sub", old);
-    }
+    sub.value = JSON.parse(cached) as SubscribeResult;
   } catch {
     /* ignore */
   }
 }
-
-const subscribers = computed(() => {
-  const list = [];
-  if (declarativeSub.value)
-    list.push({
-      id: declarativeSub.value.subscriber_id,
-      label: "Declarative",
-      triggerToken: declarativeSub.value.trigger_token,
-    });
-  if (swSub.value)
-    list.push({
-      id: swSub.value.subscriber_id,
-      label: "Service Worker",
-      triggerToken: swSub.value.trigger_token,
-    });
-  return list;
-});
-
-const diagSubscribers = computed(() => {
-  const list = [];
-  if (declarativeSub.value)
-    list.push({
-      id: declarativeSub.value.subscriber_id,
-      label: "Declarative",
-      subscription: declarativeSub.value.subscription,
-    });
-  if (swSub.value)
-    list.push({
-      id: swSub.value.subscriber_id,
-      label: "Service Worker",
-      subscription: swSub.value.subscription,
-    });
-  return list;
-});
-
-const hasAnySub = computed(() => declarativeSub.value !== null || swSub.value !== null);
 </script>
 
 <template>
   <header>
-    <h1>Declarative Web Push on iOS — live test</h1>
+    <h1>Declarative Web Push works on Safari. Firebase blocks it.</h1>
     <p>
-      Apple shipped Declarative Web Push to replace the service-worker notification model on iOS. It
-      works as of Safari 18.5 — no install required. This page lets you subscribe to both the
-      declarative path and the classic SW path and compare delivery side-by-side on the same device.
+      Apple shipped Declarative Web Push in Safari 18.5 — push notifications without a service
+      worker, with better battery life and privacy. It works. But Firebase Cloud Messaging strips
+      the <code>web_push</code> field from push payloads, making it impossible to use even on Safari
+      where it's fully supported. This demo proves what you're missing.
     </p>
   </header>
 
-  <WhatApplePromises />
-  <WhatActuallyHappens />
+  <WhyDeclarativePush />
+  <FirebaseBlocksIt />
   <InstallInstructions />
 
-  <Subscribe
-    :declarative-sub="declarativeSub"
-    :sw-sub="swSub"
-    @declarative-subscribed="onDeclarativeSubscribed"
-    @sw-subscribed="onSWSubscribed"
-  />
+  <Subscribe :existing="sub" @subscribed="onSubscribed" />
 
-  <template v-if="hasAnySub">
-    <TestControls :subscribers="subscribers" @sent="diag?.refresh()" />
-    <Diagnostics ref="diag" :subscribers="diagSubscribers" />
+  <template v-if="sub">
+    <TestControls
+      :subscriber-id="sub.subscriber_id"
+      :trigger-token="sub.trigger_token"
+      @sent="diag?.refresh()"
+    />
+    <Diagnostics ref="diag" :subscriber-id="sub.subscriber_id" :subscription="sub.subscription" />
   </template>
 
   <footer style="margin-top: 32px">

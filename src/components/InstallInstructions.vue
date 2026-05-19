@@ -11,9 +11,8 @@ const show = computed(() => ios.isIOS && !standalone);
   <section v-if="show" class="card">
     <h2>Running in Safari (not installed)</h2>
     <p>
-      You can test push from Safari directly — Declarative Web Push does not require the site to be
-      installed to the Home Screen. If you want to compare installed vs. in-browser behavior, you
-      can also add it to your Home Screen and re-run the test there.
+      Declarative Web Push works directly in Safari — no Home Screen install required. If you want
+      to compare installed vs. in-browser behavior, you can add it to your Home Screen.
     </p>
     <ol>
       <li>Tap the Share button in Safari.</li>

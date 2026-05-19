@@ -19,8 +19,7 @@ export async function subscribePush(): Promise<SubscribeResult> {
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error(`Permission ${perm}`);
 
-  // Declarative Web Push: subscribe via window.pushManager — no service worker.
-  // @ts-expect-error window.pushManager is the Declarative Web Push entry point
+  // @ts-expect-error window.pushManager is the Declarative Web Push entry point on Safari
   const pm: PushManager = window.pushManager;
   if (!pm)
     throw new Error(
@@ -33,26 +32,6 @@ export async function subscribePush(): Promise<SubscribeResult> {
     applicationServerKey: urlBase64ToUint8Array(key),
   });
   const subJson = subscription.toJSON();
-  const res = await api.subscribe(subJson, navigator.userAgent, "declarative");
-  return { ...res, subscription: subJson };
-}
-
-export async function subscribeSW(): Promise<SubscribeResult> {
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error(`Permission ${perm}`);
-
-  if (!("serviceWorker" in navigator))
-    throw new Error("Service workers not supported by this browser");
-
-  const reg = await navigator.serviceWorker.register("/sw.js");
-  await navigator.serviceWorker.ready;
-
-  const { key } = await api.vapidPublicKey();
-  const subscription = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(key),
-  });
-  const subJson = subscription.toJSON();
-  const res = await api.subscribe(subJson, navigator.userAgent, "sw");
+  const res = await api.subscribe(subJson, navigator.userAgent);
   return { ...res, subscription: subJson };
 }

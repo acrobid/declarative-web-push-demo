@@ -26,23 +26,7 @@ export interface SendResult {
 
 const SITE_URL = process.env.SITE_URL ?? "https://declarative-push.iamjoshcarter.com";
 
-export async function sendSW(sub: StoredSub): Promise<SendResult> {
-  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-  const payload = JSON.stringify({ title: "SW Web Push test", body: `Fired at ${now} UTC` });
-  try {
-    const res = await webpush.sendNotification(
-      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-      payload,
-      { TTL: 60, urgency: "high", contentEncoding: "aes128gcm" },
-    );
-    return { status: res.statusCode, body: res.body || null, error: null };
-  } catch (err) {
-    const e = err as { statusCode?: number; body?: string; message?: string };
-    return { status: e.statusCode ?? 0, body: e.body ?? null, error: e.message ?? "unknown error" };
-  }
-}
-
-export async function sendDeclarative(sub: StoredSub): Promise<SendResult> {
+export async function sendPush(sub: StoredSub): Promise<SendResult> {
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
   const payload = {
     web_push: 8030,
