@@ -13,7 +13,8 @@ db.exec(`
     auth TEXT NOT NULL,
     trigger_token TEXT UNIQUE NOT NULL,
     user_agent TEXT,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT 'declarative'
   );
   CREATE TABLE IF NOT EXISTS sends (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +37,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pending_due ON pending(due_at);
 `);
 
+// Migrate existing databases that lack the type column.
+try {
+  db.exec(`ALTER TABLE subscriptions ADD COLUMN type TEXT NOT NULL DEFAULT 'declarative'`);
+} catch {
+  // Column already exists — ignore.
+}
+
 export interface SubscriptionRow {
   id: string;
   endpoint: string;
@@ -44,4 +52,5 @@ export interface SubscriptionRow {
   trigger_token: string;
   user_agent: string | null;
   created_at: number;
+  type: "declarative" | "sw";
 }

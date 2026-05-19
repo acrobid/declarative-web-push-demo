@@ -8,9 +8,12 @@
       <li>Server signs the payload and POSTs to that endpoint.</li>
       <li>Push service returns HTTP 201 — accepted for delivery.</li>
       <li>
-        Device displays nothing. No banner. No badge. Locked or unlocked, foreground or background.
+        As of Safari 18.5, delivery works — notification appears without requiring the site to be
+        installed to the Home Screen.
       </li>
-      <li>Same payload to Firefox/Chrome desktop displays correctly.</li>
+      <li>
+        Earlier versions: push service accepted every send (201) but the device displayed nothing.
+      </li>
     </ul>
     <p><small>Run the test below. The Diagnostics panel will show the receipts.</small></p>
   </section>

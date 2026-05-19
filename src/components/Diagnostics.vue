@@ -3,19 +3,32 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { api, type SendRecord, type DebugInfo } from "../lib/api";
 import { detectIOS, isStandalone } from "../lib/ua";
 
-const props = defineProps<{ subscriberId: string; subscription: PushSubscriptionJSON }>();
+interface SubInfo {
+  id: string;
+  label: string;
+  subscription: PushSubscriptionJSON;
+}
 
-const sends = ref<SendRecord[]>([]);
+const props = defineProps<{ subscribers: SubInfo[] }>();
+
+const sendsBySubscriber = ref<Record<string, SendRecord[]>>({});
 const debug = ref<DebugInfo | null>(null);
-const expanded = ref(false);
+const expanded = ref<Record<string, boolean>>({});
 const ios = detectIOS();
 const standalone = isStandalone();
 let timer: number | undefined;
 
 async function refresh() {
   try {
-    const [sendsRes, debugRes] = await Promise.all([api.sends(props.subscriberId), api.debug()]);
-    sends.value = sendsRes.sends;
+    const [sendsResults, debugRes] = await Promise.all([
+      Promise.all(props.subscribers.map((s) => api.sends(s.id))),
+      api.debug(),
+    ]);
+    const map: Record<string, SendRecord[]> = {};
+    props.subscribers.forEach((s, i) => {
+      map[s.id] = sendsResults[i].sends;
+    });
+    sendsBySubscriber.value = map;
     debug.value = debugRes;
   } catch {
     /* ignore */
@@ -37,53 +50,71 @@ onUnmounted(() => {
   if (timer) window.clearInterval(timer);
 });
 
-const endpointHost = new URL(props.subscription.endpoint!).host;
 const userAgent = navigator.userAgent;
+
+function endpointHost(sub: SubInfo): string {
+  try {
+    return new URL(sub.subscription.endpoint!).host;
+  } catch {
+    return sub.subscription.endpoint ?? "—";
+  }
+}
 </script>
 
 <template>
   <section class="card">
     <h2>Diagnostics</h2>
     <p>
-      Endpoint: <code>{{ endpointHost }}</code
-      ><br />
       UA: <small>{{ userAgent }}</small
       ><br />
       iOS: <small>{{ ios.isIOS ? (ios.version ?? "yes") : "no" }}</small> · Standalone (installed):
       <small>{{ standalone ? "yes" : "no" }}</small>
     </p>
 
-    <p>
-      <button @click="expanded = !expanded">
-        {{ expanded ? "Hide" : "Show" }} subscription JSON
-      </button>
-    </p>
-    <pre v-if="expanded" class="json">{{ JSON.stringify(props.subscription, null, 2) }}</pre>
+    <div
+      v-for="sub in subscribers"
+      :key="sub.id"
+      style="margin-top: 16px; border-top: 1px solid #333; padding-top: 12px"
+    >
+      <h3>{{ sub.label }} — send log (last 10)</h3>
+      <p>
+        Endpoint: <code>{{ endpointHost(sub) }}</code>
+        <span style="margin-left: 8px">
+          <button style="font-size: 0.75rem" @click="expanded[sub.id] = !expanded[sub.id]">
+            {{ expanded[sub.id] ? "Hide" : "Show" }} subscription JSON
+          </button>
+        </span>
+      </p>
+      <pre v-if="expanded[sub.id]" class="json">{{
+        JSON.stringify(sub.subscription, null, 2)
+      }}</pre>
 
-    <h2 style="margin-top: 16px">Send log — this device (last 10)</h2>
-    <table v-if="sends.length">
-      <thead>
-        <tr>
-          <th>Requested</th>
-          <th>Sent</th>
-          <th>Status</th>
-          <th>Note</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="s in sends" :key="s.id">
-          <td>{{ fmt(s.requested_at) }}</td>
-          <td>{{ fmt(s.sent_at) }}</td>
-          <td :class="s.status && s.status >= 200 && s.status < 300 ? 'status-good' : 'status-bad'">
-            {{ s.status ?? (s.sent_at ? "—" : "pending") }}
-          </td>
-          <td>
-            <small>{{ s.error ?? s.response_body ?? "" }}</small>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-else><small>No sends yet.</small></p>
+      <table v-if="sendsBySubscriber[sub.id]?.length">
+        <thead>
+          <tr>
+            <th>Requested</th>
+            <th>Sent</th>
+            <th>Status</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in sendsBySubscriber[sub.id]" :key="s.id">
+            <td>{{ fmt(s.requested_at) }}</td>
+            <td>{{ fmt(s.sent_at) }}</td>
+            <td
+              :class="s.status && s.status >= 200 && s.status < 300 ? 'status-good' : 'status-bad'"
+            >
+              {{ s.status ?? (s.sent_at ? "—" : "pending") }}
+            </td>
+            <td>
+              <small>{{ s.error ?? s.response_body ?? "" }}</small>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else><small>No sends yet for this path.</small></p>
+    </div>
   </section>
 
   <section class="card" v-if="debug">
@@ -128,6 +159,7 @@ const userAgent = navigator.userAgent;
       <thead>
         <tr>
           <th>ID</th>
+          <th>Type</th>
           <th>Push service</th>
           <th>UA (truncated)</th>
           <th>Created</th>
@@ -137,6 +169,9 @@ const userAgent = navigator.userAgent;
         <tr v-for="s in debug.subscriptions" :key="s.id">
           <td>
             <code>{{ s.id.slice(0, 8) }}…</code>
+          </td>
+          <td>
+            <code>{{ s.type }}</code>
           </td>
           <td>
             <code>{{ s.endpoint_host }}</code>

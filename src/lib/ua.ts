@@ -24,3 +24,7 @@ export function supportsDeclarativePush(): boolean {
   // Heuristic: window.pushManager exists on Safari with Declarative Web Push.
   return "pushManager" in window;
 }
+
+export function supportsServiceWorkerPush(): boolean {
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}

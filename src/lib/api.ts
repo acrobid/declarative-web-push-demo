@@ -25,6 +25,7 @@ export interface DebugInfo {
     endpoint_host: string;
     user_agent: string | null;
     created_at: number;
+    type: string;
   }>;
   recent_sends: Array<{
     id: number;
@@ -49,10 +50,10 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   vapidPublicKey: () => jsonFetch<{ key: string }>("/api/vapid-public-key"),
-  subscribe: (subscription: PushSubscriptionJSON, userAgent: string) =>
+  subscribe: (subscription: PushSubscriptionJSON, userAgent: string, type?: "declarative" | "sw") =>
     jsonFetch<SubscribeResponse>("/api/subscribe", {
       method: "POST",
-      body: JSON.stringify({ subscription, user_agent: userAgent }),
+      body: JSON.stringify({ subscription, user_agent: userAgent, type }),
     }),
   send: (subscriber_id: string, delay_seconds = 0) =>
     jsonFetch<{ ok: true; pending_id?: number; send_id?: number }>("/api/send", {
