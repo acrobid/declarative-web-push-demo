@@ -12,6 +12,32 @@ export interface SendRecord {
   error: string | null;
 }
 
+export interface DebugInfo {
+  config: {
+    site_url: string;
+    vapid_public_key_prefix: string;
+    port: number;
+    node_version: string;
+    uptime_seconds: number;
+  };
+  subscriptions: Array<{
+    id: string;
+    endpoint_host: string;
+    user_agent: string | null;
+    created_at: number;
+  }>;
+  recent_sends: Array<{
+    id: number;
+    subscription_id: string;
+    endpoint_host: string | null;
+    requested_at: number;
+    sent_at: number | null;
+    status: number | null;
+    response_body: string | null;
+    error: string | null;
+  }>;
+}
+
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -37,4 +63,5 @@ export const api = {
     jsonFetch<{ sends: SendRecord[] }>(
       `/api/sends?subscriber_id=${encodeURIComponent(subscriber_id)}`,
     ),
+  debug: () => jsonFetch<DebugInfo>("/api/debug"),
 };

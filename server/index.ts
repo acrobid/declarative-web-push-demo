@@ -11,6 +11,32 @@ const app = new Hono();
 const PORT = Number(process.env.PORT ?? 8787);
 const STATIC_DIR = process.env.STATIC_DIR ?? "dist";
 
+const SUBSCRIPTION_CAP = 50;
+const SENDS_PER_SUBSCRIBER = 50;
+
+// ---- Rate limiting ------------------------------------------------------
+
+const ipWindows = new Map<string, number[]>();
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getIP(c: any): string {
+  return (
+    (c.req.header("x-forwarded-for") as string | undefined)?.split(",")[0]?.trim() ??
+    (c.req.header("x-real-ip") as string | undefined) ??
+    "unknown"
+  );
+}
+
+function checkRate(ip: string, key: string, maxPerMinute: number): boolean {
+  const k = `${ip}:${key}`;
+  const now = Date.now();
+  const hits = (ipWindows.get(k) ?? []).filter((t) => now - t < 60_000);
+  if (hits.length >= maxPerMinute) return false;
+  hits.push(now);
+  ipWindows.set(k, hits);
+  return true;
+}
+
 // ---- API ----------------------------------------------------------------
 
 app.get("/healthz", (c) => c.text("ok"));
@@ -18,6 +44,8 @@ app.get("/healthz", (c) => c.text("ok"));
 app.get("/api/vapid-public-key", (c) => c.json({ key: vapidPublicKey }));
 
 app.post("/api/subscribe", async (c) => {
+  if (!checkRate(getIP(c), "subscribe", 5)) return c.json({ error: "rate limited" }, 429);
+
   const body = await c.req.json<{
     subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
     user_agent?: string;
@@ -32,6 +60,19 @@ app.post("/api/subscribe", async (c) => {
   if (existing) {
     return c.json({ subscriber_id: existing.id, trigger_token: existing.trigger_token });
   }
+
+  // Evict oldest subscriptions (and their sends) if over cap.
+  const count = (db.prepare("SELECT COUNT(*) as n FROM subscriptions").get() as { n: number }).n;
+  if (count >= SUBSCRIPTION_CAP) {
+    const oldest = db
+      .prepare(`SELECT id FROM subscriptions ORDER BY created_at ASC LIMIT ?`)
+      .all(count - SUBSCRIPTION_CAP + 1) as Array<{ id: string }>;
+    const ids = oldest.map((r) => r.id);
+    const placeholders = ids.map(() => "?").join(",");
+    db.prepare(`DELETE FROM sends WHERE subscription_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM subscriptions WHERE id IN (${placeholders})`).run(...ids);
+  }
+
   const id = randomUUID();
   const trigger_token = randomBytes(16).toString("hex");
   db.prepare(
@@ -42,6 +83,8 @@ app.post("/api/subscribe", async (c) => {
 });
 
 app.post("/api/send", async (c) => {
+  if (!checkRate(getIP(c), "send", 20)) return c.json({ error: "rate limited" }, 429);
+
   const { subscriber_id, delay_seconds } = await c.req.json<{
     subscriber_id: string;
     delay_seconds?: number;
@@ -64,6 +107,71 @@ app.post("/api/send", async (c) => {
     .prepare("INSERT INTO pending (subscription_id, due_at, requested_at) VALUES (?, ?, ?)")
     .run(sub.id, due_at, requested_at);
   return c.json({ ok: true, pending_id: info.lastInsertRowid as number });
+});
+
+app.get("/api/debug", (c) => {
+  const subscriptions = (
+    db
+      .prepare(
+        `SELECT id, endpoint, user_agent, created_at FROM subscriptions ORDER BY created_at DESC`,
+      )
+      .all() as Array<{
+      id: string;
+      endpoint: string;
+      user_agent: string | null;
+      created_at: number;
+    }>
+  ).map((r) => ({
+    id: r.id,
+    endpoint_host: (() => {
+      try {
+        return new URL(r.endpoint).host;
+      } catch {
+        return r.endpoint;
+      }
+    })(),
+    user_agent: r.user_agent,
+    created_at: r.created_at,
+  }));
+
+  const recent_sends = db
+    .prepare(
+      `SELECT s.id, s.subscription_id, sub.endpoint, s.requested_at, s.sent_at, s.status, s.response_body, s.error
+       FROM sends s LEFT JOIN subscriptions sub ON sub.id = s.subscription_id
+       ORDER BY s.requested_at DESC LIMIT 30`,
+    )
+    .all() as Array<{
+    id: number;
+    subscription_id: string;
+    endpoint: string | null;
+    requested_at: number;
+    sent_at: number | null;
+    status: number | null;
+    response_body: string | null;
+    error: string | null;
+  }>;
+
+  return c.json({
+    config: {
+      site_url: process.env.SITE_URL ?? "(not set)",
+      vapid_public_key_prefix: vapidPublicKey.slice(0, 12) + "…",
+      port: PORT,
+      node_version: process.version,
+      uptime_seconds: Math.floor(process.uptime()),
+    },
+    subscriptions,
+    recent_sends: recent_sends.map((r) => ({
+      ...r,
+      endpoint_host: (() => {
+        try {
+          return r.endpoint ? new URL(r.endpoint).host : null;
+        } catch {
+          return r.endpoint;
+        }
+      })(),
+      endpoint: undefined,
+    })),
+  });
 });
 
 app.get("/api/sends", (c) => {
@@ -113,6 +221,12 @@ async function dispatch(sub: SubscriptionRow, send_id: number) {
   db.prepare(
     `UPDATE sends SET sent_at = ?, status = ?, response_body = ?, error = ? WHERE id = ?`,
   ).run(Date.now(), result.status, result.body, result.error, send_id);
+  // Prune old sends for this subscriber, keeping only the most recent.
+  db.prepare(
+    `DELETE FROM sends WHERE subscription_id = ? AND id NOT IN (
+       SELECT id FROM sends WHERE subscription_id = ? ORDER BY requested_at DESC LIMIT ?
+     )`,
+  ).run(sub.id, sub.id, SENDS_PER_SUBSCRIBER);
   // 410 / 404 → subscription is gone; clean up.
   if (result.status === 404 || result.status === 410) {
     db.prepare("DELETE FROM subscriptions WHERE id = ?").run(sub.id);
