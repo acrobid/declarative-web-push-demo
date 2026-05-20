@@ -30,40 +30,41 @@ async function onSubscribe() {
 </script>
 
 <template>
-  <section class="card">
-    <h2>Subscribe</h2>
-    <template v-if="!supported">
+  <template v-if="!supported">
+    <section class="card">
+      <h2>Not available on this browser</h2>
       <p class="status-bad">
-        This browser does not expose <code>window.pushManager</code>. Declarative Web Push is only
-        available on Safari 18.5+. On Chrome and Firefox, the old service-worker model is the only
-        option.
+        <code>window.pushManager</code> is not exposed. Declarative Web Push is only available on
+        Safari 18.5+. Chrome and Firefox still require the old service-worker model.
       </p>
       <p>
         <small
-          >On Safari, the <code>web_push</code> field works when sending directly — but Firebase
-          rejects it as an unknown field. This demo sends directly without Firebase.</small
+          >This demo sends directly — without Firebase — to prove the <code>web_push</code> field
+          works.</small
         >
       </p>
-    </template>
-    <template v-else-if="props.existing">
-      <p class="status-good">
-        Subscribed — ID <code>{{ props.existing.subscriber_id.slice(0, 8) }}&hellip;</code>
-      </p>
+    </section>
+  </template>
+  <template v-else-if="props.existing">
+    <div class="subscribed-badge">
+      <span class="status-good">Subscribed</span>
       <button :disabled="busy" @click="onSubscribe">
         {{ busy ? "Subscribing…" : "Re-subscribe" }}
       </button>
-    </template>
-    <template v-else>
-      <p>
-        Grant notification permission and subscribe via
-        <code>window.pushManager</code>. No service worker required.
-      </p>
-      <button class="primary" :disabled="busy" @click="onSubscribe">
-        {{ busy ? "Subscribing…" : "Subscribe to push" }}
+    </div>
+  </template>
+  <template v-else>
+    <div class="cta-group">
+      <button class="primary hero-btn" :disabled="busy" @click="onSubscribe">
+        {{ busy ? "Subscribing…" : "Send me a notification" }}
       </button>
-    </template>
-    <p v-if="error" class="status-bad">
+      <p class="cta-hint">
+        <span class="em">No service worker required.</span>
+        <span class="muted-hint">Works on Safari 18.5+</span>
+      </p>
+    </div>
+    <p v-if="error" class="status-bad cta-error">
       <small>{{ error }}</small>
     </p>
-  </section>
+  </template>
 </template>
