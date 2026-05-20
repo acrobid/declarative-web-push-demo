@@ -15,7 +15,7 @@ unless the section calls out variation.
 
 We are building a Progressive Web App that demonstrates Apple's **Declarative
 Web Push** (announced 2025 on the WebKit blog) works on Safari 18.5+ today
-— while **Firebase Cloud Messaging strips the `web_push` field**, making it
+— while **Firebase Cloud Messaging rejects the `web_push` field** with a validation error, making it
 impossible for Firebase users to adopt declarative push even on Safari where
 it's fully supported.
 
@@ -106,8 +106,8 @@ declarative-web-push-demo/
 │   ├── style.css              # rewrite per §8
 │   ├── App.vue                # write per §8
 │   ├── components/
-│   │   ├── WhatApplePromises.vue
-│   │   ├── WhatActuallyHappens.vue
+│   │   ├── WhyDeclarativePush.vue
+│   │   ├── FirebaseBlocksIt.vue
 │   │   ├── InstallInstructions.vue
 │   │   ├── Subscribe.vue
 │   │   ├── TestControls.vue
@@ -226,7 +226,7 @@ export default defineConfig({
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Decl. Push Test" />
     <meta name="theme-color" content="#111111" />
-    <title>Declarative Web Push — broken on iOS?</title>
+    <title>Declarative Web Push works on Safari. Firebase blocks it.</title>
   </head>
   <body>
     <div id="app"></div>
@@ -243,7 +243,7 @@ export default defineConfig({
 {
   "name": "Declarative Web Push Demo",
   "short_name": "Decl. Push",
-  "description": "Reproducing Apple's broken Declarative Web Push on iOS.",
+  "description": "Declarative Web Push works on Safari. Firebase blocks the web_push field.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111111",
@@ -420,12 +420,7 @@ export function isStandalone(): boolean {
   );
 }
 
-export function supportsPush(): boolean {
-  return "PushManager" in window && "Notification" in window;
-}
-
 export function supportsDeclarativePush(): boolean {
-  // Heuristic: window.pushManager exists on Safari with Declarative Web Push.
   return "pushManager" in window;
 }
 ```
@@ -450,7 +445,7 @@ export interface SendRecord {
 async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "content-type": "application/json", ...(init?.headers as Record<string, string>) },
   });
   if (!res.ok) throw new Error(`${url} → ${res.status}`);
   return res.json() as Promise<T>;
@@ -480,7 +475,7 @@ export const api = {
 ```ts
 import { api } from "./api";
 
-function urlBase64ToUint8Array(base64: string): Uint8Array {
+function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(b64);
@@ -499,8 +494,7 @@ export async function subscribePush(): Promise<SubscribeResult> {
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error(`Permission ${perm}`);
 
-  // Declarative Web Push: subscribe via window.pushManager — no service worker.
-  // @ts-expect-error window.pushManager is the Declarative Web Push entry point
+  // @ts-expect-error window.pushManager is the Declarative Web Push entry point on Safari
   const pm: PushManager = window.pushManager;
   if (!pm)
     throw new Error(
@@ -518,31 +512,31 @@ export async function subscribePush(): Promise<SubscribeResult> {
 }
 ```
 
-### `src/components/WhatApplePromises.vue`
+### `src/components/WhyDeclarativePush.vue`
 
 ```vue
 <script setup lang="ts"></script>
 
 <template>
   <section class="card">
-    <h2>What Apple says should happen</h2>
+    <h2>What is Declarative Web Push?</h2>
     <ul class="bullets">
-      <li>No service worker needed — the OS displays the notification.</li>
-      <li>Site subscribes via <code>window.pushManager</code>.</li>
+      <li>No service worker needed — the OS displays the notification natively.</li>
+      <li>Subscribe via <code>window.pushManager</code> (Safari 18.5+).</li>
       <li>
         Server sends JSON with <code>"web_push": 8030</code> and a <code>notification</code> object.
       </li>
-      <li>OS parses payload, shows banner, updates app badge.</li>
-      <li>More private and battery-friendly than the old service-worker model.</li>
+      <li>OS parses the payload, shows the banner, updates the app badge.</li>
+      <li>Better battery life, better privacy than the old service-worker model.</li>
     </ul>
     <p>
       <small
-        >Source:
+        >Apple shipped this in Safari 18.5.
         <a
           href="https://webkit.org/blog/16535/meet-declarative-web-push/"
           target="_blank"
           rel="noopener"
-          >webkit.org/blog/16535</a
+          >WebKit blog post</a
         ></small
       >
     </p>
@@ -550,24 +544,38 @@ export async function subscribePush(): Promise<SubscribeResult> {
 </template>
 ```
 
-### `src/components/WhatActuallyHappens.vue`
+### `src/components/FirebaseBlocksIt.vue`
 
 ```vue
 <script setup lang="ts"></script>
 
 <template>
   <section class="card">
-    <h2>What actually happens on iOS (as of testing)</h2>
+    <h2>Firebase Cloud Messaging blocks it</h2>
     <ul class="bullets">
-      <li>Subscription succeeds — endpoint is issued by Apple's push service.</li>
-      <li>Server signs the payload and POSTs to that endpoint.</li>
-      <li>Push service returns HTTP 201 — accepted for delivery.</li>
+      <li>Safari supports declarative web push. It works today.</li>
       <li>
-        Device displays nothing. No banner. No badge. Locked or unlocked, foreground or background.
+        But if you use Firebase Cloud Messaging to send push, FCM's SDK
+        <strong>rejects the <code>web_push</code> field</strong> with a validation error.
       </li>
-      <li>Same payload to Firefox/Chrome desktop displays correctly.</li>
+      <li>
+        This means Firebase users cannot use declarative push — even on Safari where it's fully
+        supported.
+      </li>
+      <li>
+        The fix is trivial: allow a single optional field. Google acknowledged the issue in 2025 but
+        has taken no action.
+      </li>
     </ul>
-    <p><small>Run the test below. The Diagnostics panel will show the receipts.</small></p>
+    <p>
+      <a
+        href="https://github.com/firebase/firebase-admin-node/issues/2892"
+        target="_blank"
+        rel="noopener"
+        >GitHub issue: firebase-admin-node#2892</a
+      >
+    </p>
+    <p><small>Star and comment to signal demand for this single-field fix.</small></p>
   </section>
 </template>
 ```
@@ -586,12 +594,15 @@ const show = computed(() => ios.isIOS && !standalone);
 
 <template>
   <section v-if="show" class="card">
-    <h2>Install first (iOS only)</h2>
-    <p>iOS Safari requires the site to be installed to the Home Screen before Push works.</p>
+    <h2>Running in Safari (not installed)</h2>
+    <p>
+      Declarative Web Push works directly in Safari — no Home Screen install required. If you want
+      to compare installed vs. in-browser behavior, you can add it to your Home Screen.
+    </p>
     <ol>
       <li>Tap the Share button in Safari.</li>
       <li>Tap <strong>Add to Home Screen</strong>.</li>
-      <li>Open the installed app from your Home Screen, then continue here.</li>
+      <li>Open from your Home Screen and subscribe again to get a separate reading.</li>
     </ol>
   </section>
 </template>
@@ -605,7 +616,13 @@ import { ref } from "vue";
 import { subscribePush, type SubscribeResult } from "../lib/push";
 import { supportsDeclarativePush } from "../lib/ua";
 
-const emit = defineEmits<{ (e: "subscribed", result: SubscribeResult): void }>();
+const emit = defineEmits<{
+  (e: "subscribed", result: SubscribeResult): void;
+}>();
+
+const props = defineProps<{
+  existing: SubscribeResult | null;
+}>();
 
 const supported = supportsDeclarativePush();
 const busy = ref(false);
@@ -628,19 +645,39 @@ async function onSubscribe() {
 <template>
   <section class="card">
     <h2>Subscribe</h2>
-    <p v-if="!supported" class="status-bad">
-      This browser does not expose <code>window.pushManager</code>. Declarative Web Push is
-      unsupported here. Try Safari 18.5+ on iOS or macOS.
-    </p>
+    <template v-if="!supported">
+      <p class="status-bad">
+        This browser does not expose <code>window.pushManager</code>. Declarative Web Push is only
+        available on Safari 18.5+. On Chrome and Firefox, the old service-worker model is the only
+        option.
+      </p>
+      <p>
+        <small
+          >On Safari, the <code>web_push</code> field works when sending directly — but Firebase
+          rejects it as an unknown field. This demo sends directly without Firebase.</small
+        >
+      </p>
+    </template>
+    <template v-else-if="props.existing">
+      <p class="status-good">
+        Subscribed — ID <code>{{ props.existing.subscriber_id.slice(0, 8) }}&hellip;</code>
+      </p>
+      <button :disabled="busy" @click="onSubscribe">
+        {{ busy ? "Subscribing…" : "Re-subscribe" }}
+      </button>
+    </template>
     <template v-else>
-      <p>Grant notification permission and create a push subscription.</p>
+      <p>
+        Grant notification permission and subscribe via
+        <code>window.pushManager</code>. No service worker required.
+      </p>
       <button class="primary" :disabled="busy" @click="onSubscribe">
         {{ busy ? "Subscribing…" : "Subscribe to push" }}
       </button>
-      <p v-if="error" class="status-bad">
-        <small>{{ error }}</small>
-      </p>
     </template>
+    <p v-if="error" class="status-bad">
+      <small>{{ error }}</small>
+    </p>
   </section>
 </template>
 ```
@@ -717,7 +754,10 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { api, type SendRecord } from "../lib/api";
 import { detectIOS, isStandalone } from "../lib/ua";
 
-const props = defineProps<{ subscriberId: string; subscription: PushSubscriptionJSON }>();
+const props = defineProps<{
+  subscriberId: string;
+  subscription: PushSubscriptionJSON;
+}>();
 
 const sends = ref<SendRecord[]>([]);
 const expanded = ref(false);
@@ -727,8 +767,8 @@ let timer: number | undefined;
 
 async function refresh() {
   try {
-    const r = await api.sends(props.subscriberId);
-    sends.value = r.sends;
+    const res = await api.sends(props.subscriberId);
+    sends.value = res.sends;
   } catch {
     /* ignore */
   }
@@ -749,7 +789,15 @@ onUnmounted(() => {
   if (timer) window.clearInterval(timer);
 });
 
-const endpointHost = new URL(props.subscription.endpoint!).host;
+const userAgent = navigator.userAgent;
+
+const endpointHost = (() => {
+  try {
+    return new URL(props.subscription.endpoint!).host;
+  } catch {
+    return props.subscription.endpoint ?? "—";
+  }
+})();
 </script>
 
 <template>
@@ -758,7 +806,7 @@ const endpointHost = new URL(props.subscription.endpoint!).host;
     <p>
       Endpoint: <code>{{ endpointHost }}</code
       ><br />
-      UA: <small>{{ navigator.userAgent }}</small
+      UA: <small>{{ userAgent }}</small
       ><br />
       iOS: <small>{{ ios.isIOS ? (ios.version ?? "yes") : "no" }}</small> · Standalone (installed):
       <small>{{ standalone ? "yes" : "no" }}</small>
@@ -771,7 +819,7 @@ const endpointHost = new URL(props.subscription.endpoint!).host;
     </p>
     <pre v-if="expanded" class="json">{{ JSON.stringify(props.subscription, null, 2) }}</pre>
 
-    <h2 style="margin-top:16px">Send log (last 10)</h2>
+    <h2 style="margin-top: 16px">Send log (last 10)</h2>
     <table v-if="sends.length">
       <thead>
         <tr>
@@ -804,8 +852,8 @@ const endpointHost = new URL(props.subscription.endpoint!).host;
 ```vue
 <script setup lang="ts">
 import { ref } from "vue";
-import WhatApplePromises from "./components/WhatApplePromises.vue";
-import WhatActuallyHappens from "./components/WhatActuallyHappens.vue";
+import WhyDeclarativePush from "./components/WhyDeclarativePush.vue";
+import FirebaseBlocksIt from "./components/FirebaseBlocksIt.vue";
 import InstallInstructions from "./components/InstallInstructions.vue";
 import Subscribe from "./components/Subscribe.vue";
 import TestControls from "./components/TestControls.vue";
@@ -817,7 +865,6 @@ const diag = ref<InstanceType<typeof Diagnostics> | null>(null);
 
 function onSubscribed(r: SubscribeResult) {
   sub.value = r;
-  // Persist so reload keeps state during testing.
   localStorage.setItem("dwp:sub", JSON.stringify(r));
 }
 
@@ -833,19 +880,20 @@ if (cached) {
 
 <template>
   <header>
-    <h1>Declarative Web Push — does it actually work on iOS?</h1>
+    <h1>Declarative Web Push works on Safari. Firebase blocks it.</h1>
     <p>
-      Apple shipped Declarative Web Push to fix the long-standing problems with iOS PWA
-      notifications. In testing, the push service accepts every send (HTTP 201) but iOS displays
-      nothing. Try it on your own device.
+      Apple shipped Declarative Web Push in Safari 18.5 — push notifications without a service
+      worker, with better battery life and privacy. It works. But Firebase Cloud Messaging rejects
+      the <code>web_push</code> field with a validation error, making it impossible to use even on
+      Safari where it's fully supported. This demo proves what you're missing.
     </p>
   </header>
 
-  <WhatApplePromises />
-  <WhatActuallyHappens />
+  <WhyDeclarativePush />
+  <FirebaseBlocksIt />
   <InstallInstructions />
 
-  <Subscribe v-if="!sub" @subscribed="onSubscribed" />
+  <Subscribe :existing="sub" @subscribed="onSubscribed" />
 
   <template v-if="sub">
     <TestControls
@@ -856,7 +904,7 @@ if (cached) {
     <Diagnostics ref="diag" :subscriber-id="sub.subscriber_id" :subscription="sub.subscription" />
   </template>
 
-  <footer style="margin-top:32px">
+  <footer style="margin-top: 32px">
     <small>
       Source code &amp; blog post forthcoming. Contact:
       <a href="mailto:thick.jet4332@fastmail.com">thick.jet4332@fastmail.com</a>
@@ -950,7 +998,7 @@ export interface SendResult {
 
 const SITE_URL = process.env.SITE_URL ?? "https://declarative-push.iamjoshcarter.com";
 
-export async function sendDeclarative(sub: StoredSub): Promise<SendResult> {
+export async function sendPush(sub: StoredSub): Promise<SendResult> {
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
   const payload = {
     web_push: 8030,
@@ -990,11 +1038,37 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { db, type SubscriptionRow } from "./db.js";
-import { sendDeclarative, vapidPublicKey } from "./push.js";
+import { sendPush, vapidPublicKey } from "./push.js";
 
 const app = new Hono();
 const PORT = Number(process.env.PORT ?? 8787);
 const STATIC_DIR = process.env.STATIC_DIR ?? "dist";
+
+const SUBSCRIPTION_CAP = 50;
+const SENDS_PER_SUBSCRIBER = 50;
+
+// ---- Rate limiting ------------------------------------------------------
+
+const ipWindows = new Map<string, number[]>();
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getIP(c: any): string {
+  return (
+    (c.req.header("x-forwarded-for") as string | undefined)?.split(",")[0]?.trim() ??
+    (c.req.header("x-real-ip") as string | undefined) ??
+    "unknown"
+  );
+}
+
+function checkRate(ip: string, key: string, maxPerMinute: number): boolean {
+  const k = `${ip}:${key}`;
+  const now = Date.now();
+  const hits = (ipWindows.get(k) ?? []).filter((t) => now - t < 60_000);
+  if (hits.length >= maxPerMinute) return false;
+  hits.push(now);
+  ipWindows.set(k, hits);
+  return true;
+}
 
 // ---- API ----------------------------------------------------------------
 
@@ -1003,6 +1077,8 @@ app.get("/healthz", (c) => c.text("ok"));
 app.get("/api/vapid-public-key", (c) => c.json({ key: vapidPublicKey }));
 
 app.post("/api/subscribe", async (c) => {
+  if (!checkRate(getIP(c), "subscribe", 5)) return c.json({ error: "rate limited" }, 429);
+
   const body = await c.req.json<{
     subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
     user_agent?: string;
@@ -1017,6 +1093,19 @@ app.post("/api/subscribe", async (c) => {
   if (existing) {
     return c.json({ subscriber_id: existing.id, trigger_token: existing.trigger_token });
   }
+
+  // Evict oldest subscriptions (and their sends) if over cap.
+  const count = (db.prepare("SELECT COUNT(*) as n FROM subscriptions").get() as { n: number }).n;
+  if (count >= SUBSCRIPTION_CAP) {
+    const oldest = db
+      .prepare(`SELECT id FROM subscriptions ORDER BY created_at ASC LIMIT ?`)
+      .all(count - SUBSCRIPTION_CAP + 1) as Array<{ id: string }>;
+    const ids = oldest.map((r) => r.id);
+    const placeholders = ids.map(() => "?").join(",");
+    db.prepare(`DELETE FROM sends WHERE subscription_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM subscriptions WHERE id IN (${placeholders})`).run(...ids);
+  }
+
   const id = randomUUID();
   const trigger_token = randomBytes(16).toString("hex");
   db.prepare(
@@ -1027,6 +1116,8 @@ app.post("/api/subscribe", async (c) => {
 });
 
 app.post("/api/send", async (c) => {
+  if (!checkRate(getIP(c), "send", 20)) return c.json({ error: "rate limited" }, 429);
+
   const { subscriber_id, delay_seconds } = await c.req.json<{
     subscriber_id: string;
     delay_seconds?: number;
@@ -1090,7 +1181,7 @@ function recordRequest(subscription_id: string, requested_at: number): number {
 }
 
 async function dispatch(sub: SubscriptionRow, send_id: number) {
-  const result = await sendDeclarative({
+  const result = await sendPush({
     endpoint: sub.endpoint,
     p256dh: sub.p256dh,
     auth: sub.auth,
@@ -1098,6 +1189,12 @@ async function dispatch(sub: SubscriptionRow, send_id: number) {
   db.prepare(
     `UPDATE sends SET sent_at = ?, status = ?, response_body = ?, error = ? WHERE id = ?`,
   ).run(Date.now(), result.status, result.body, result.error, send_id);
+  // Prune old sends for this subscriber, keeping only the most recent.
+  db.prepare(
+    `DELETE FROM sends WHERE subscription_id = ? AND id NOT IN (
+       SELECT id FROM sends WHERE subscription_id = ? ORDER BY requested_at DESC LIMIT ?
+     )`,
+  ).run(sub.id, sub.id, SENDS_PER_SUBSCRIBER);
   // 410 / 404 → subscription is gone; clean up.
   if (result.status === 404 || result.status === 410) {
     db.prepare("DELETE FROM subscriptions WHERE id = ?").run(sub.id);
@@ -1255,9 +1352,16 @@ dist-server
 ````markdown
 # Declarative Web Push Demo
 
-Reproducing Apple's [Declarative Web Push](https://webkit.org/blog/16535/meet-declarative-web-push/)
-on iOS Safari, where the push service accepts every send but the device
-displays nothing.
+**Declarative Web Push works on Safari today. Firebase Cloud Messaging rejects it.**
+
+Apple shipped Declarative Web Push in Safari 18.5 — push notifications without a
+service worker, with better battery life and privacy. It works directly in Safari.
+But [Firebase Cloud Messaging rejects the `web_push` field](https://github.com/firebase/firebase-admin-node/issues/2892)
+from push payloads, making declarative push impossible for Firebase users even on
+Safari where it's fully supported.
+
+The fix is a single optional field passthrough. Google acknowledged the issue in
+2025 but has taken no action.
 
 Live: https://declarative-push.iamjoshcarter.com
 
@@ -1267,13 +1371,13 @@ Live: https://declarative-push.iamjoshcarter.com
 pnpm install
 cp .env.example .env
 npx web-push generate-vapid-keys   # paste into .env
-pnpm dev                            # runs Vite SPA + Hono API concurrently
+pnpm dev                            # Vite SPA + Hono API concurrently
 ```
 ````
 
 Push requires HTTPS, so subscribe testing locally needs a tunnel
 (e.g. `ngrok http 5173` or a Tailscale Funnel) — point Safari at the public
-URL, install to home screen, then test.
+URL, then test.
 
 ## Build and run
 
@@ -1299,20 +1403,18 @@ A correct implementation must satisfy all of:
 4. `pnpm start` boots the server; `GET /healthz` returns `ok`.
 5. `GET /` returns the SPA HTML; `GET /api/vapid-public-key` returns the
    public key from the env.
-6. On a desktop browser supporting Push (Firefox or Chrome), `Subscribe`
-   succeeds, `Send now` produces a desktop notification, and the
-   Diagnostics panel records HTTP 201 for the send.
-7. On iOS Safari 18.5+ with the PWA installed: `Subscribe` succeeds and
-   sends produce HTTP 201 in the Diagnostics panel. Whether iOS actually
-   displays the notification is the open question this demo exists to
-   answer — both outcomes are valid demo results.
+6. On Safari 18.5+, `window.pushManager` is available. Subscribing succeeds
+   and sends return HTTP 201 in the Diagnostics panel, with notifications
+   appearing on the device.
+7. On Chrome/Firefox, `window.pushManager` is absent — the Subscribe card
+   explains why and links to the Firebase issue.
 8. Docker image builds and runs end-to-end identically to local.
 
 ## 15. Out of Scope
 
-- Service-worker-based push (the thing Apple itself called broken).
+- Service-worker-based push (the legacy model this demo argues against).
 - Multi-user dashboards or admin auth.
 - Analytics or tracking.
-- Any non-declarative payload variant ("send without `web_push: 8030`" was
-  considered and rejected to keep the demo focused).
+- Firebase integration (the demo sends directly to prove the `web_push` field
+  works when Firebase isn't in the way).
 ```

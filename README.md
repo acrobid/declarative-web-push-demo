@@ -1,8 +1,8 @@
 # Declarative Web Push Demo
 
-**Declarative Web Push works on Safari today. Firebase Cloud Messaging blocks it.**
+**Declarative Web Push works on Safari today. Firebase Cloud Messaging rejects it.**
 
-Apple shipped Declarative Web Push in Safari 18.5 — push notifications without a service worker, with better battery life and privacy. It works directly in Safari. But [Firebase Cloud Messaging strips the `web_push` field](https://github.com/firebase/firebase-admin-node/issues/2892) from push payloads, making declarative push impossible for Firebase users even on Safari where it's fully supported.
+Apple shipped Declarative Web Push in Safari 18.5 — push notifications without a service worker, with better battery life and privacy. It works directly in Safari. But [Firebase Cloud Messaging rejects the `web_push` field](https://github.com/firebase/firebase-admin-node/issues/2892) with a validation error, making declarative push impossible for Firebase users even on Safari where it's fully supported.
 
 The fix is a single optional field passthrough. Google acknowledged the issue in 2025 but has taken no action.
 
@@ -26,7 +26,7 @@ This PWA lets you subscribe to declarative push notifications on Safari and trig
 
 The Diagnostics panel records every send with its HTTP status from Apple's push service. Sends return **HTTP 201** (accepted) and the notification appears on the device.
 
-If you're on Chrome or Firefox, `window.pushManager` doesn't exist — those browsers still require the old service-worker model. And if you use Firebase to send push, the `web_push` field is stripped regardless of browser.
+If you're on Chrome or Firefox, `window.pushManager` doesn't exist — those browsers still require the old service-worker model. And if you use Firebase to send push, the `web_push` field is rejected as an unknown field.
 
 ## Stack
 
@@ -63,7 +63,7 @@ Single Dockerfile, deployed via Coolify on Hetzner. See `IMPLEMENTATION.md §12`
 
 ## The Firebase gap
 
-Firebase Cloud Messaging's admin SDK currently strips the `web_push` field from push payloads. This means even if you're targeting Safari, where declarative push works, Firebase prevents you from using it.
+Firebase Cloud Messaging's admin SDK currently rejects the `web_push` field as an unknown field. This means even if you're targeting Safari, where declarative push works, Firebase prevents you from using it.
 
 The fix is a single-field passthrough. It's been [reported since 2025](https://github.com/firebase/firebase-admin-node/issues/2892) with no action from Google.
 

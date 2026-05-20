@@ -31,9 +31,9 @@ if (cached) {
     <h1>Declarative Web Push works on Safari. Firebase blocks it.</h1>
     <p>
       Apple shipped Declarative Web Push in Safari 18.5 — push notifications without a service
-      worker, with better battery life and privacy. It works. But Firebase Cloud Messaging strips
-      the <code>web_push</code> field from push payloads, making it impossible to use even on Safari
-      where it's fully supported. This demo proves what you're missing.
+      worker, with better battery life and privacy. It works. But Firebase Cloud Messaging rejects
+      the <code>web_push</code> field with a validation error, making it impossible to use even on
+      Safari where it's fully supported. This demo proves what you're missing.
     </p>
   </header>
 

@@ -7,15 +7,15 @@
       <li>Safari supports declarative web push. It works today.</li>
       <li>
         But if you use Firebase Cloud Messaging to send push, FCM's SDK
-        <strong>strips the <code>web_push</code> field</strong> from your payload.
+        <strong>rejects the <code>web_push</code> field</strong> with a validation error.
       </li>
       <li>
         This means Firebase users cannot use declarative push — even on Safari where it's fully
         supported.
       </li>
       <li>
-        The fix is trivial: stop dropping a single optional field. Google acknowledged the issue in
-        2025 but has taken no action.
+        The fix is trivial: allow a single optional field. Google acknowledged the issue in 2025 but
+        has taken no action.
       </li>
     </ul>
     <p>

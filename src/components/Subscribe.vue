@@ -41,7 +41,7 @@ async function onSubscribe() {
       <p>
         <small
           >On Safari, the <code>web_push</code> field works when sending directly — but Firebase
-          strips it. This demo sends directly without Firebase.</small
+          rejects it as an unknown field. This demo sends directly without Firebase.</small
         >
       </p>
     </template>
