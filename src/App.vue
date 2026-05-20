@@ -40,12 +40,15 @@ if (cached) {
 
 <template>
   <section class="hero">
-    <h1>Declarative Web Push works on Safari.<br />Firebase blocks it.</h1>
+    <h1>
+      Notifications work without a service worker on Safari.<br />Google Firebase blocks the
+      feature.
+    </h1>
     <p class="hero-sub">
       Apple shipped
-      <span class="em">push notifications without a service worker</span>. It's magic.
-      <span class="em">It works today.</span> But Firebase Cloud Messaging rejects the field that
-      makes it possible.
+      <span class="em">push notifications without a service worker</span>. It's
+      <em class="magic-word">magic</em>. <span class="em">It works today.</span> But Firebase Cloud
+      Messaging rejects the field that makes it possible.
       <span class="em">1 line of code in a type file is all it would take to fix.</span>
     </p>
   </section>
