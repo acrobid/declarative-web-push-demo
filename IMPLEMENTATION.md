@@ -1418,3 +1418,94 @@ A correct implementation must satisfy all of:
 - Firebase integration (the demo sends directly to prove the `web_push` field
   works when Firebase isn't in the way).
 ```
+
+## 16. Gotcha: `notification.navigate` must be an absolute URL
+
+This is the single most painful failure mode when porting the demo's payload
+into a real app, because **every signal lies to you except the device itself.**
+
+`navigate` is a required member of the `notification` object, and WebKit parses
+it as a URL. If you pass a **relative** path (`/`, `/post/123`, `/messages/42`)
+instead of an **absolute** URL, WebKit parses the declarative payload, rejects
+the invalid `navigate`, and **displays nothing** — silently. There is no error
+anywhere in the pipeline:
+
+- Your server returns `200`.
+- Apple's push service returns **HTTP `201`** (accepted). It never inspects the
+  encrypted payload, so a bad `navigate` is invisible here.
+- The notification simply never appears on the device.
+
+**Signature of this bug: a delivered push (`201`) with no banner on a correctly
+installed PWA. Check `navigate` first.** This demo only works out of the box
+because it happens to send an absolute `SITE_URL` (see §9, `server/push.ts`).
+
+If your app produces relative paths (most routers do), resolve them against your
+origin at send time rather than scattering absolute URLs through your code:
+
+```ts
+const SITE_URL = process.env.SITE_URL; // e.g. https://your-app.com
+const absoluteNavigate = (nav: string) =>
+  /^https?:\/\//i.test(nav) ? nav : SITE_URL + (nav.startsWith("/") ? nav : "/" + nav);
+
+// ...then in the payload:
+notification: { title, body, navigate: absoluteNavigate(route), lang: "en-US", dir: "ltr" }
+```
+
+## 17. Porting to Cloudflare Workers
+
+The demo uses Node's `web-push` package on a long-lived Node server. That package
+depends on Node's `crypto` module and **does not run on Cloudflare Workers**. Here
+is what changes when the same payload is sent from a Worker (verified in
+production on a Nuxt 4 / Nitro `cloudflare_module` app):
+
+**1. Swap the send library for a WebCrypto one.** Use
+[`@block65/webcrypto-web-push`](https://www.npmjs.com/package/@block65/webcrypto-web-push),
+which signs VAPID and encrypts (aes128gcm) using the WebCrypto API available in
+Workers. It returns a fetch-ready request you POST to the subscription endpoint:
+
+```ts
+import { buildPushPayload } from "@block65/webcrypto-web-push";
+
+const message = {
+  data: JSON.stringify({
+    web_push: 8030,
+    notification: { title, body, navigate: absoluteNavigate(route), lang: "en-US", dir: "ltr" },
+  }),
+  options: { ttl: 60, urgency: "high" }, // urgency is "low" | "normal" | "high" — no "very-low"
+};
+const payload = await buildPushPayload(message, subscription, {
+  subject: process.env.VAPID_SUBJECT,
+  publicKey: process.env.VAPID_PUBLIC_KEY,
+  privateKey: process.env.VAPID_PRIVATE_KEY,
+});
+const res = await fetch(subscription.endpoint, payload); // 201 = accepted, 404/410 = dead sub
+```
+
+**2. Make `process.env` actually populated.** Workers don't expose `process.env`
+by default. Add the `nodejs_compat_populate_process_env` compatibility flag (or
+use a `compatibility_date >= 2025-04-01`, where it's default-on) so your VAPID
+vars/secrets are readable the same way as on Node. Without it, the keys read as
+`undefined` at runtime and signing fails. In `wrangler.jsonc`:
+
+```jsonc
+{
+  "compatibility_flags": ["nodejs_compat_populate_process_env"],
+  "vars": {
+    // Non-sensitive — committed. The public VAPID key is already in the client bundle.
+    "VAPID_PUBLIC_KEY": "B...",
+    "VAPID_SUBJECT": "mailto:you@example.com",
+    // Required so navigate paths resolve to absolute URLs (see §16).
+    "SITE_URL": "https://your-app.workers.dev",
+  },
+}
+```
+
+**3. Keep the private key a secret, not a var.** Set it with
+`npx wrangler secret put VAPID_PRIVATE_KEY` — never commit it to `wrangler.jsonc`.
+
+**4. The client side is unchanged.** `window.pushManager.subscribe(...)` with the
+VAPID public key works identically; there's no service worker either way. Only the
+*server* send path differs between Node and Workers.
+
+The `navigate`-must-be-absolute rule from §16 is platform-independent — it bit us
+specifically on Workers only because that app used relative router paths.

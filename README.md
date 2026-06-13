@@ -8,6 +8,8 @@ The fix is a single optional field passthrough. Google acknowledged the issue in
 
 **Live demo:** https://declarative-push.iamjoshcarter.com
 
+**Building this yourself?** [`IMPLEMENTATION.md`](./IMPLEMENTATION.md) is the complete step-by-step guide — stack, every source file, deploy, and the gotchas worth knowing ([§16 absolute `navigate`](./IMPLEMENTATION.md), [§17 Cloudflare Workers](./IMPLEMENTATION.md)).
+
 ---
 
 ## What is Declarative Web Push?
@@ -27,6 +29,9 @@ This PWA lets you subscribe to declarative push notifications on Safari and trig
 The Diagnostics panel records every send with its HTTP status from Apple's push service. Sends return **HTTP 201** (accepted) and the notification appears on the device.
 
 If you're on Chrome or Firefox, `window.pushManager` doesn't exist — those browsers still require the old service-worker model. And if you use Firebase to send push, the `web_push` field is rejected as an unknown field.
+
+> [!IMPORTANT]
+> **`notification.navigate` must be an absolute URL.** A relative path like `/post/123` makes WebKit silently drop the notification — the push service still returns HTTP 201, so it *looks* delivered but no banner appears. If a push delivers (201) but nothing shows, check `navigate` first. See [`IMPLEMENTATION.md` §16](./IMPLEMENTATION.md), plus [§17](./IMPLEMENTATION.md) for porting the send path to Cloudflare Workers.
 
 ## Stack
 
