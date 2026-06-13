@@ -1373,7 +1373,6 @@ cp .env.example .env
 npx web-push generate-vapid-keys   # paste into .env
 pnpm dev                            # Vite SPA + Hono API concurrently
 ```
-````
 
 Push requires HTTPS, so subscribe testing locally needs a tunnel
 (e.g. `ngrok http 5173` or a Tailscale Funnel) — point Safari at the public
@@ -1389,8 +1388,7 @@ pnpm start
 ## Deploy
 
 See `IMPLEMENTATION.md` §12. Single Dockerfile, Coolify on Hetzner.
-
-```
+````
 
 ## 14. Acceptance Tests
 
@@ -1417,7 +1415,6 @@ A correct implementation must satisfy all of:
 - Analytics or tracking.
 - Firebase integration (the demo sends directly to prove the `web_push` field
   works when Firebase isn't in the way).
-```
 
 ## 16. Gotcha: `notification.navigate` must be an absolute URL
 
