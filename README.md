@@ -8,6 +8,8 @@ The fix is a single optional field passthrough. Google acknowledged the issue in
 
 **Live demo:** https://declarative-push.iamjoshcarter.com
 
+**Building this yourself?** [`IMPLEMENTATION.md`](./IMPLEMENTATION.md) is the complete step-by-step guide — stack, every source file, deploy, and the gotchas worth knowing ([§16 absolute `navigate`](./IMPLEMENTATION.md), [§17 Cloudflare Workers](./IMPLEMENTATION.md)).
+
 ---
 
 ## What is Declarative Web Push?
